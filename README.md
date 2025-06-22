@@ -1,4 +1,4 @@
-# OCR+TTS Desktop Utility
+# MultiLangOCR
 
 A lightweight Windows desktop utility that lets you:
 - Use a global hotkey to capture a screen region
