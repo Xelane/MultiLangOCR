@@ -2,15 +2,10 @@
 
 A lightweight Windows desktop utility that lets you:
 - Use a global hotkey to capture a screen region
-- Extract multilingual text via OCR (English, Japanese, Chinese, Korean)
+- Extract multilingual text via OCR (English, Japanese, Chinese Simplified, Chinese Traditional)
 - Automatically copy to clipboard
 - Play back with TTS
-
-### Features
-- Global hotkeys for OCR and TTS
-- Auto-language detection
-- Optional auto-TTS playback
-- A GUI with scan history
+- Configurable settings
 
 ### Setup
 
