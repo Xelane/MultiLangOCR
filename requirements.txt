@@ -1,0 +1,7 @@
+pyperclip
+Pillow
+opencv-python
+keyboard
+PyQt6
+paddleocr
+paddlepaddle-gpu==3.0.0rc0

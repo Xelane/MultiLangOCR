@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg
+*.egg-info/
+*.log
+
+# Environments
+.env
+.venv/
+env/
+venv/
+*.sqlite3
+
+# Compiled Qt files
+*.qrc.py
+*.ui.py
+
+# Cache / debug
+debug_ocr/
+.DS_Store
+*.bak
+*.swp
+
+# VSCode / IDEs
+.vscode/
+.idea/
+
+# Windows
+Thumbs.db
+desktop.ini
+
+# Executables
+*.exe
+*.spec
+dist/
+build/
