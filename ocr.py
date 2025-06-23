@@ -2,47 +2,81 @@ import os
 import logging
 import numpy as np
 import cv2
+import unicodedata
 from paddleocr import PaddleOCR
-import platform
 import paddleocr
-print("[DEBUG] PaddleOCR version:", paddleocr.__version__)
+from utils import load_app_settings
 
+
+print("[DEBUG] PaddleOCR version:", paddleocr.__version__)
 logging.getLogger('ppocr').setLevel(logging.ERROR)
 
-LANGUAGES = {
-    'en': 'en',
-    'ja': 'japan',
-    'zh-cn': 'ch',
-    'zh-tw': 'chinese_cht',
-    #'ko': 'korean'
-}
+ocr = PaddleOCR(
+    lang="japan",  # multilingual model: en, ja, zh, ko
+    use_doc_orientation_classify=False,
+    use_doc_unwarping=False,
+    use_textline_orientation=False,
+    ocr_version="PP-OCRv5"
+)
 
-# Model download path
-if platform.system() == "Windows":
-    PADDLE_MODELS_DIR = os.path.join(os.path.expanduser('~'), '.paddlex', 'official_models')
-else:
-    PADDLE_MODELS_DIR = os.path.join(os.path.expanduser('~'), '.paddlex', 'official_models')
+# Unicode-based script detection
+def detect_unicode_script(text):
+    has_hiragana = False
+    has_katakana = False
+    has_cjk = False
+    has_hangul = False
+    has_latin = False
 
-ocr_readers = {}
-for common_code, paddle_lang_tag in LANGUAGES.items():
-    print(f"[OCR] Loading model for {common_code} (Paddle tag: {paddle_lang_tag})...")
-    try:
-        reader_instance = PaddleOCR(
-            lang=paddle_lang_tag,
-            use_doc_orientation_classify=False,
-            use_doc_unwarping=False,
-            use_textline_orientation=False,
-            ocr_version="PP-OCRv5"
-        )
-        ocr_readers[common_code] = reader_instance
-        print(f"[OCR] Loaded: {common_code} reader successfully.")
-    except Exception as e:
-        print(f"[OCR] Failed to load {common_code} reader: {e}")
+    for ch in text:
+        if not ch.strip():
+            continue
+        try:
+            name = unicodedata.name(ch)
+            if "HIRAGANA" in name:
+                has_hiragana = True
+            elif "KATAKANA" in name:
+                has_katakana = True
+            elif "HANGUL" in name:
+                has_hangul = True
+            elif "CJK UNIFIED" in name:
+                has_cjk = True
+            elif "LATIN" in name:
+                has_latin = True
+        except ValueError:
+            continue
 
-if not ocr_readers:
-    raise SystemExit("CRITICAL ERROR: No PaddleOCR readers could be loaded.")
+    if has_hiragana or has_katakana:
+        return "ja"
+    elif has_hangul:
+        return "ko"
+    elif has_cjk:
+        return "zh"
+    elif has_latin:
+        return "en"
+    else:
+        return "en"
+
+def is_kanji_only(text):
+    for ch in text:
+        if not ch.strip():
+            continue
+        try:
+            name = unicodedata.name(ch)
+            if (
+                "HIRAGANA" in name
+                or "KATAKANA" in name
+                or "HANGUL" in name
+                or "LATIN" in name
+            ):
+                return False  # Has other language markers
+        except ValueError:
+            continue
+    return True  # Only CJK or symbols
+
 
 def extract_text_with_lang(img_bgr):
+    detected_lang = "en"  # <-- default fallback
+    full_text = ""
     if not isinstance(img_bgr, np.ndarray) or img_bgr.size == 0:
         print("[OCR] Invalid image input.")
         return "", "en"
@@ -51,42 +85,41 @@ def extract_text_with_lang(img_bgr):
     os.makedirs(debug_dir, exist_ok=True)
     cv2.imwrite(os.path.join(debug_dir, "debug_input_to_ocr.png"), img_bgr)
 
-    best_text, best_lang, best_conf = "", "en", 0.0
+    try:
+        result_list = ocr.predict(img_bgr)
 
-    for lang_code, reader in ocr_readers.items():
-        try:
-            result_list = reader.predict(img_bgr)
-            if not result_list:
-                continue
-            #print(f"[DEBUG] result type for {lang_code}:", type(result_list[0]))
-            #print(f"[DEBUG] result content:", result_list[0])
+        if not result_list or not isinstance(result_list[0], dict):
+            print("[OCR] Invalid result format:", result_list)
+            return "", "en"
 
-            ocr_result = result_list[0]
-            texts = ocr_result["rec_texts"]
-            scores = ocr_result["rec_scores"]
+        ocr_result = result_list[0]
+        texts = ocr_result.get("rec_texts", [])
+        scores = ocr_result.get("rec_scores", [])
 
-            #print(f"[OCR] Raw result for {lang_code}: {texts}, scores: {scores}")
+        if not texts or not scores or len(texts) != len(scores):
+            print("[OCR] Empty or mismatched rec_texts/scores")
+            return "", "en"
 
-            filtered = [(t.strip(), s) for t, s in zip(texts, scores) if t.strip()]
-            if not filtered:
-                continue
+        filtered = [(t.strip(), s) for t, s in zip(texts, scores) if t.strip()]
+        if not filtered:
+            return "", "en"
 
-            text, confs = zip(*filtered)
-            avg_conf = sum(confs) / len(confs)
-            full_text = "\n".join(text)
+        lines, confs = zip(*filtered)
+        full_text = "\n".join(lines)
+        avg_conf = sum(confs) / len(confs)
 
-            print(f"[OCR] {lang_code} avg conf: {avg_conf:.2f}")
-            bonus = min(len(full_text) / 1000.0, 0.1)
-            adjusted_conf = avg_conf + bonus
+        detected_lang = detect_unicode_script(full_text)
+        
+        settings = load_app_settings()
+        if detected_lang == "zh" and settings.get("prefer_ja_over_zh", False):
+            if is_kanji_only(full_text):
+                print("[OCR] Kanji-only text detected — overriding zh → ja due to user preference")
+                detected_lang = "ja"
 
-            if adjusted_conf > best_conf:
-                best_conf = adjusted_conf
-                best_text = full_text
-                best_lang = lang_code
 
-        except Exception as e:
-            print(f"[OCR] Error for {lang_code}: {e}")
-            continue
+        print(f"[OCR] Detected text: '{full_text[:30]}' (lang={detected_lang}, conf={avg_conf:.3f})")
+        return full_text, detected_lang
 
-    print(f"[OCR] Final Best Result: Language='{best_lang}', Confidence={best_conf:.2f}")
-    return best_text, best_lang if best_text else ("", "en")
+    except Exception as e:
+        print("[OCR] Unexpected error:", e)
+        return "", "en"

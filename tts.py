@@ -1,5 +1,13 @@
 import pyttsx3
+import threading
 
+# Initialize shared TTS engine and control flags
+tts_engine = pyttsx3.init()
+tts_lock = threading.Lock()
+tts_stop_event = threading.Event()
+current_tts_thread = None
+
+# Voice preference hints for language matching
 VOICE_HINTS = {
     'en': ['David', 'Zira'],
     'ja': ['Haruka', 'Japanese'],
@@ -16,20 +24,33 @@ def find_voice_for_lang(engine, lang_code):
     return None
 
 def speak_text(text, lang_code='en'):
-    try:
-        engine = pyttsx3.init()  # re-init every time
-        # [FIX] Set volume to the maximum (1.0)
-        engine.setProperty('volume', 1.0)
-        voice_id = find_voice_for_lang(engine, lang_code)
+    global current_tts_thread, tts_stop_event
 
-        if voice_id:
-            engine.setProperty('voice', voice_id)
-            print(f"[TTS] Using voice: {voice_id}")
-        else:
-            print(f"[TTS] No matching voice for {lang_code}, using default.")
+    def tts_worker():
+        with tts_lock:
+            if tts_stop_event.is_set():
+                return
+            voice_id = find_voice_for_lang(tts_engine, lang_code)
+            if voice_id:
+                tts_engine.setProperty('voice', voice_id)
+                print(f"[TTS] Using voice: {voice_id}")
+            else:
+                print(f"[TTS] No matching voice for {lang_code}, using default.")
 
-        engine.say(text)
-        engine.runAndWait()
-        engine.stop()  # clean exit
-    except Exception as e:
-        print(f"[TTS] Error: {e}")
+            tts_engine.say(text)
+            try:
+                tts_engine.runAndWait()
+            except RuntimeError:
+                print("[TTS] Stopped before completion.")
+            tts_engine.stop()
+
+    # Stop any ongoing playback
+    if current_tts_thread and current_tts_thread.is_alive():
+        tts_stop_event.set()
+        tts_engine.stop()
+        current_tts_thread.join()
+
+    # Start new playback
+    tts_stop_event.clear()
+    current_tts_thread = threading.Thread(target=tts_worker, daemon=True)
+    current_tts_thread.start()
