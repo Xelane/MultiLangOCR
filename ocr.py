@@ -1,7 +1,5 @@
-import os
 import logging
 import numpy as np
-import cv2
 import unicodedata
 from paddleocr import PaddleOCR
 import paddleocr
@@ -90,10 +88,6 @@ def extract_text_with_lang(img_bgr):
     if not isinstance(img_bgr, np.ndarray) or img_bgr.size == 0:
         print("[OCR] Invalid image input.")
         return "", "en"
-
-    debug_dir = "debug_ocr"
-    os.makedirs(debug_dir, exist_ok=True)
-    cv2.imwrite(os.path.join(debug_dir, "debug_input_to_ocr.png"), img_bgr)
 
     try:
         result_list = ocr.predict(img_bgr)

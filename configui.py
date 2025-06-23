@@ -1,6 +1,6 @@
 from PyQt6.QtWidgets import (
     QWidget, QLabel, QVBoxLayout, QCheckBox, QListWidget,
-    QListWidgetItem, QPushButton, QApplication, QMessageBox
+    QListWidgetItem, QPushButton, QApplication, QMessageBox, QHBoxLayout 
 )
 from PyQt6.QtCore import Qt, QTimer
 import json
@@ -29,9 +29,11 @@ class ConfigUI(QWidget):
 
         self.save_btn = QPushButton("Save Settings")
         self.save_btn.clicked.connect(self.save_config)
+        self.reset_btn = QPushButton("Restore Defaults")
+        self.reset_btn.clicked.connect(self.confirm_restore_defaults)
 
         self.status_label = QLabel("")
-        self.status_label.setStyleSheet("color: green; font-size: 12px;")
+        self.status_label.setStyleSheet("font-size: 12px; color: green;")
         
 
         self.status_timer = QTimer()
@@ -45,15 +47,30 @@ class ConfigUI(QWidget):
         layout.addWidget(self.auto_start_checkbox)
         layout.addWidget(self.prefer_ja_checkbox)
         layout.addWidget(self.status_label)
-        layout.addWidget(self.save_btn)
+        btn_layout = QHBoxLayout()
+        btn_layout.addWidget(self.save_btn)
+        btn_layout.addWidget(self.reset_btn)
+        layout.addLayout(btn_layout)
+
+        self.auto_copy_checkbox.stateChanged.connect(self.check_unsaved_changes)
+        self.auto_tts_checkbox.stateChanged.connect(self.check_unsaved_changes)
+        self.auto_start_checkbox.stateChanged.connect(self.check_unsaved_changes)
+        self.prefer_ja_checkbox.stateChanged.connect(self.check_unsaved_changes)
 
         self.setLayout(layout)
         self.load_config()
+        self.initial_config = {
+            "auto_copy": self.auto_copy_checkbox.isChecked(),
+            "auto_tts": self.auto_tts_checkbox.isChecked(),
+            "auto_start": self.auto_start_checkbox.isChecked(),
+            "prefer_ja_over_zh": self.prefer_ja_checkbox.isChecked()
+        }
         self.load_history()
 
-    def show_status(self, message):
-            self.status_label.setText(message)
-            self.status_timer.start(3000)  # 3 seconds
+    def show_status(self, message, color="green"):
+        self.status_label.setText(message)
+        self.status_label.setStyleSheet(f"color: {color}; font-size: 12px;")
+        self.status_timer.start(3000)  # 3 seconds
     
     def clear_status(self):
         self.status_label.setText("")
@@ -62,10 +79,23 @@ class ConfigUI(QWidget):
         if os.path.exists("config.json"):
             with open("config.json", "r") as f:
                 data = json.load(f)
-                self.auto_copy_checkbox.setChecked(data.get("auto_copy", True))
-                self.auto_tts_checkbox.setChecked(data.get("auto_tts", False))
-                self.auto_start_checkbox.setChecked(data.get("auto_start", False))
-                self.prefer_ja_checkbox.setChecked(data.get("prefer_ja_over_zh", False))
+
+            # Block signals while loading
+            self.auto_copy_checkbox.blockSignals(True)
+            self.auto_tts_checkbox.blockSignals(True)
+            self.auto_start_checkbox.blockSignals(True)
+            self.prefer_ja_checkbox.blockSignals(True)
+
+            self.auto_copy_checkbox.setChecked(data.get("auto_copy", True))
+            self.auto_tts_checkbox.setChecked(data.get("auto_tts", False))
+            self.auto_start_checkbox.setChecked(data.get("auto_start", False))
+            self.prefer_ja_checkbox.setChecked(data.get("prefer_ja_over_zh", False))
+
+            self.auto_copy_checkbox.blockSignals(False)
+            self.auto_tts_checkbox.blockSignals(False)
+            self.auto_start_checkbox.blockSignals(False)
+            self.prefer_ja_checkbox.blockSignals(False)
+
 
     def save_config(self):
         data = {
@@ -76,7 +106,7 @@ class ConfigUI(QWidget):
         }
         with open("config.json", "w") as f:
             json.dump(data, f, indent=4)
-        self.show_status("Preferences saved.")
+        self.show_status("Preferences saved.", color="green")
 
     def load_history(self):
         self.list_widget.clear()
@@ -93,6 +123,45 @@ class ConfigUI(QWidget):
         if self.auto_copy_checkbox.isChecked():
             pyperclip.copy(entry["text"])
             self.show_status("Copied to clipboard.")
+    
+    def check_unsaved_changes(self):
+        changed = (
+            self.auto_copy_checkbox.isChecked() != self.initial_config.get("auto_copy") or
+            self.auto_tts_checkbox.isChecked() != self.initial_config.get("auto_tts") or
+            self.auto_start_checkbox.isChecked() != self.initial_config.get("auto_start") or
+            self.prefer_ja_checkbox.isChecked() != self.initial_config.get("prefer_ja_over_zh")
+        )
+        if changed:
+            self.show_status("Unsaved changes", color="red")
+            self.status_timer.stop()  # Keep the message until saved
+        else:
+            self.status_label.setText("")
+
+
+    def confirm_restore_defaults(self):
+        confirm = QMessageBox.question(
+            self, "Restore Defaults",
+            "Are you sure you want to restore default settings?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        if confirm == QMessageBox.StandardButton.Yes:
+            self.restore_defaults()
+
+    def restore_defaults(self):
+        self.auto_copy_checkbox.setChecked(True)
+        self.auto_tts_checkbox.setChecked(False)
+        self.auto_start_checkbox.setChecked(False)
+        self.prefer_ja_checkbox.setChecked(False)
+        self.check_unsaved_changes()
+        self.save_config()
+        self.initial_config = {
+            "auto_copy": self.auto_copy_checkbox.isChecked(),
+            "auto_tts": self.auto_tts_checkbox.isChecked(),
+            "auto_start": self.auto_start_checkbox.isChecked(),
+            "prefer_ja_over_zh": self.prefer_ja_checkbox.isChecked()
+        }
+        self.show_status("Defaults restored.", color="blue")
+
 
 def launch_config_ui(history=[]):
     app = QApplication.instance()

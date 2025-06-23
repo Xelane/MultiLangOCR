@@ -3,6 +3,8 @@ import pyperclip
 import json
 import os
 import threading
+import ctypes
+import time
 from PyQt6.QtWidgets import QApplication, QSystemTrayIcon, QMenu, QStyle, QWidget
 from PyQt6.QtCore import QTimer, pyqtSignal, QObject
 from PyQt6.QtGui import QIcon, QAction
@@ -168,11 +170,18 @@ class TrayApp:
         else:
             config_window.raise_()
             config_window.activateWindow()
-
+        
     def cleanup(self):
         self.tray_icon.hide()
         self.tray_icon.deleteLater()
-
+        QApplication.processEvents()
+        time.sleep(0.05)  # slight delay helps
+        refresh_tray_area()
+    
+def refresh_tray_area():
+    hwnd = ctypes.windll.user32.FindWindowW("Shell_TrayWnd", None)
+    if hwnd:
+        ctypes.windll.user32.InvalidateRect(hwnd, None, True)
 
 
 def main():
