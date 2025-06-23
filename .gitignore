@@ -37,3 +37,6 @@ desktop.ini
 *.spec
 dist/
 build/
+
+# Config
+config.json
