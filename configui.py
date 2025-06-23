@@ -25,7 +25,7 @@ class ConfigUI(QWidget):
         self.auto_copy_checkbox = QCheckBox("Copy to Clipboard on capture")
         self.auto_tts_checkbox = QCheckBox("Automatic TTS Playback for every capture")
         self.auto_start_checkbox = QCheckBox("Run on system boot")
-        self.prefer_ja_checkbox = QCheckBox("Prefer Japanese over Chinese when kanji is ambiguous")
+        self.prefer_ja_checkbox = QCheckBox("Prefer Japanese over Chinese when text is ambiguous")
 
         self.save_btn = QPushButton("Save Settings")
         self.save_btn.clicked.connect(self.save_config)

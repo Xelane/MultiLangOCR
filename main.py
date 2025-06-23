@@ -169,6 +169,10 @@ class TrayApp:
             config_window.raise_()
             config_window.activateWindow()
 
+    def cleanup(self):
+        self.tray_icon.hide()
+        self.tray_icon.deleteLater()
+
 
 
 def main():
@@ -198,6 +202,7 @@ def main():
     keep_alive.timeout.connect(lambda: None)
 
     print("Running event loop...")
+    app.aboutToQuit.connect(tray_controller.cleanup)
     sys.exit(app.exec())
 
 if __name__ == "__main__":

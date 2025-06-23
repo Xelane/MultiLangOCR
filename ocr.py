@@ -6,6 +6,8 @@ import unicodedata
 from paddleocr import PaddleOCR
 import paddleocr
 from utils import load_app_settings
+from opencc import OpenCC
+
 
 
 print("[DEBUG] PaddleOCR version:", paddleocr.__version__)
@@ -73,6 +75,14 @@ def is_kanji_only(text):
             continue
     return True  # Only CJK or symbols
 
+def is_traditional_chinese(text):
+    """
+    Returns True if the given text appears to be Traditional Chinese.
+    """
+    cc = OpenCC('t2s')  # Converts Traditional → Simplified
+    simplified = cc.convert(text)
+    return simplified != text
+
 
 def extract_text_with_lang(img_bgr):
     detected_lang = "en"  # <-- default fallback
@@ -109,7 +119,15 @@ def extract_text_with_lang(img_bgr):
         avg_conf = sum(confs) / len(confs)
 
         detected_lang = detect_unicode_script(full_text)
-        
+
+        # Optional: override zh → zh-tw if it's Traditional
+        if detected_lang == "zh":
+            if is_traditional_chinese(full_text):
+                print("[OCR] Chinese text appears Traditional → using zh-tw")
+                detected_lang = "zh-tw"
+            else:
+                print("[OCR] Chinese text appears Simplified → using zh")
+
         settings = load_app_settings()
         if detected_lang == "zh" and settings.get("prefer_ja_over_zh", False):
             if is_kanji_only(full_text):
