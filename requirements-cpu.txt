@@ -1,7 +1,0 @@
-pyperclip
-Pillow
-opencv-python
-keyboard
-PyQt6
-paddleocr
-paddlepaddle==3.0.0

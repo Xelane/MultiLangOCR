@@ -2,31 +2,28 @@ import logging
 import numpy as np
 import unicodedata
 from paddleocr import PaddleOCR
+import paddle
 import paddleocr
 from utils import load_app_settings
 from opencc import OpenCC
 
-
-
 print("[DEBUG] PaddleOCR version:", paddleocr.__version__)
 logging.getLogger('ppocr').setLevel(logging.ERROR)
 
+# Initialize PaddleOCR
+if not paddle.device.get_device().startswith("gpu"):
+    print("[WARNING] Running on CPU. For better performance, install the GPU version of PaddlePaddle.")
 ocr = PaddleOCR(
-    lang="japan",  # multilingual model: en, ja, zh, ko
     use_doc_orientation_classify=False,
     use_doc_unwarping=False,
     use_textline_orientation=False,
-    ocr_version="PP-OCRv5"
+    ocr_version="PP-OCRv5",
 )
 
-# Unicode-based script detection
-def detect_unicode_script(text):
-    has_hiragana = False
-    has_katakana = False
-    has_cjk = False
-    has_hangul = False
-    has_latin = False
+# --- Script-level language detection ---
 
+def detect_unicode_script(text):
+    has_hiragana = has_katakana = has_cjk = has_hangul = has_latin = False
     for ch in text:
         if not ch.strip():
             continue
@@ -53,8 +50,7 @@ def detect_unicode_script(text):
         return "zh"
     elif has_latin:
         return "en"
-    else:
-        return "en"
+    return "en"
 
 def is_kanji_only(text):
     for ch in text:
@@ -62,29 +58,19 @@ def is_kanji_only(text):
             continue
         try:
             name = unicodedata.name(ch)
-            if (
-                "HIRAGANA" in name
-                or "KATAKANA" in name
-                or "HANGUL" in name
-                or "LATIN" in name
-            ):
-                return False  # Has other language markers
+            if any(tok in name for tok in ("HIRAGANA", "KATAKANA", "HANGUL", "LATIN")):
+                return False
         except ValueError:
             continue
-    return True  # Only CJK or symbols
+    return True
 
 def is_traditional_chinese(text):
-    """
-    Returns True if the given text appears to be Traditional Chinese.
-    """
-    cc = OpenCC('t2s')  # Converts Traditional → Simplified
-    simplified = cc.convert(text)
-    return simplified != text
+    cc = OpenCC('t2s')  # Traditional → Simplified
+    return cc.convert(text) != text
 
+# --- OCR + Language Wrapper ---
 
 def extract_text_with_lang(img_bgr):
-    detected_lang = "en"  # <-- default fallback
-    full_text = ""
     if not isinstance(img_bgr, np.ndarray) or img_bgr.size == 0:
         print("[OCR] Invalid image input.")
         return "", "en"
@@ -114,7 +100,6 @@ def extract_text_with_lang(img_bgr):
 
         detected_lang = detect_unicode_script(full_text)
 
-        # Optional: override zh → zh-tw if it's Traditional
         if detected_lang == "zh":
             if is_traditional_chinese(full_text):
                 print("[OCR] Chinese text appears Traditional → using zh-tw")
@@ -127,7 +112,6 @@ def extract_text_with_lang(img_bgr):
             if is_kanji_only(full_text):
                 print("[OCR] Kanji-only text detected — overriding zh → ja due to user preference")
                 detected_lang = "ja"
-
 
         print(f"[OCR] Detected text: '{full_text[:30]}' (lang={detected_lang}, conf={avg_conf:.3f})")
         return full_text, detected_lang

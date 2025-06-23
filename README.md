@@ -9,16 +9,21 @@ A lightweight Windows desktop utility that lets you:
 
 ### Setup
 
-For NVIDIA users:
+NVIDIA users:
 ```bash
+pip install --pre paddlepaddle-gpu -i https://www.paddlepaddle.org.cn/packages/nightly/cu118/
 pip install -r requirements.txt
 ```
-Non-NVIDIA users cannot use hardware acceleration and will have to use their CPU:
+
+Non-NVIDIA (CPU) users:
 ```bash
+pip install paddlepaddle
 pip install -r requirements-cpu.txt
 ```
 
-### Run with:
+### Run launch.bat to run the program
+
+Alternatively run:
 ```bash
 python main.py
 ```

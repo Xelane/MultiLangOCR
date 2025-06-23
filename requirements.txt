@@ -1,7 +1,9 @@
+PyQt6
 pyperclip
+pyttsx3
+keyboard
 Pillow
 opencv-python
-keyboard
-PyQt6
-paddleocr
-paddlepaddle-gpu==3.0.0rc0
+numpy
+opencc-python-reimplemented
+paddleocr>=3.0.0
