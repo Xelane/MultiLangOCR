@@ -100,18 +100,21 @@ def extract_text_with_lang(img_bgr):
 
         detected_lang = detect_unicode_script(full_text)
 
-        if detected_lang == "zh":
+        settings = load_app_settings()
+        # First: allow override for both zh and zh-tw
+        if detected_lang in ("zh", "zh-tw") and settings.get("prefer_ja_over_zh", False):
+            if is_kanji_only(full_text):
+                print("[OCR] Kanji-only text detected — overriding zh/zh-tw → ja due to user preference")
+                detected_lang = "ja"
+
+        # Only now check for Traditional Chinese, if not overridden
+        elif detected_lang == "zh":
             if is_traditional_chinese(full_text):
                 print("[OCR] Chinese text appears Traditional → using zh-tw")
                 detected_lang = "zh-tw"
             else:
                 print("[OCR] Chinese text appears Simplified → using zh")
 
-        settings = load_app_settings()
-        if detected_lang == "zh" and settings.get("prefer_ja_over_zh", False):
-            if is_kanji_only(full_text):
-                print("[OCR] Kanji-only text detected — overriding zh → ja due to user preference")
-                detected_lang = "ja"
 
         print(f"[OCR] Detected text: '{full_text[:30]}' (lang={detected_lang}, conf={avg_conf:.3f})")
         return full_text, detected_lang
