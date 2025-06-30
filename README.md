@@ -1,33 +1,43 @@
 # MultiLangOCR
 
-A lightweight Windows desktop utility that lets you:
-- Use a global hotkey to capture a screen region
-- Extract multilingual text via OCR (English, Japanese, Chinese Simplified, Chinese Traditional)
-- Automatically copy to clipboard
-- Play back with TTS
+A Windows desktop tool for extracting text from screen regions using OCR, with automatic clipboard copying and text-to-speech playback.
+
+## Features
+
+- Global hotkey screen capture
+- OCR support for English, Japanese, Chinese (Simplified/Traditional)
+- Automatic clipboard copying
+- Text-to-speech playback
 - Configurable settings
 
-### Setup
+## Setup
 
-NVIDIA users:
+**NVIDIA GPU users:**
 ```bash
 pip install --pre paddlepaddle-gpu -i https://www.paddlepaddle.org.cn/packages/nightly/cu118/
 pip install -r requirements.txt
 ```
 
-Non-NVIDIA (CPU) users:
+**CPU users:**
 ```bash
 pip install paddlepaddle
 pip install -r requirements-cpu.txt
 ```
 
-### Run launch.bat to run the program
+## Usage
 
-Alternatively run:
+Run `launch.bat` or:
 ```bash
 python main.py
 ```
 
-### Default Hotkeys
+**Default Hotkeys:**
 - Alt+Q → OCR scan
 - Alt+W → TTS playback
+
+## Dependencies
+
+- PaddleOCR for text recognition
+- OpenCC for Chinese character conversion
+- pyttsx3 for text-to-speech
+- PyQt for GUI
