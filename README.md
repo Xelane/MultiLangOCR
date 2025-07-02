@@ -49,3 +49,4 @@ python main.py
 - OpenCC for Chinese character conversion
 - pyttsx3 for text-to-speech
 - PyQt for GUI
+- Windows Language packs for the language you want to TTS
