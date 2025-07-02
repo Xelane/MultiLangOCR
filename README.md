@@ -3,9 +3,10 @@
 A Windows desktop tool for extracting text from screen regions using OCR, with automatic clipboard copying and text-to-speech playback.
 
 ## Screenshots
-<div align="center">
-  ![App](./screenshots/app.png)
-  ![Scan](./screenshots/scan.png)
+
+<div style="text-align: center;">
+  <img src="./screenshots/app.png" alt="App">
+  <img src="./screenshots/scan.png" alt="Scan">
 </div>
 
 ## Features
