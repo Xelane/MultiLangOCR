@@ -1,5 +1,5 @@
 {
     "auto_copy": true,
     "auto_tts": true,
-    "prefer_ja_over_zh": false
+    "prefer_ja_over_zh": true
 }
