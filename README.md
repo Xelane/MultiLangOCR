@@ -4,10 +4,11 @@ A Windows desktop tool for extracting text from screen regions using OCR, with a
 
 ## Screenshots
 
-<div style="text-align: center;">
+<p align="center">
   <img src="./screenshots/app.png" alt="App">
+  <br>
   <img src="./screenshots/scan.png" alt="Scan">
-</div>
+</p>
 
 ## Features
 
