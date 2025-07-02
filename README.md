@@ -2,6 +2,11 @@
 
 A Windows desktop tool for extracting text from screen regions using OCR, with automatic clipboard copying and text-to-speech playback.
 
+## Screenshots
+
+![App](./screenshots/app.png)
+![Scan](./screenshots/scan.png)
+
 ## Features
 
 - Global hotkey screen capture
