@@ -2,6 +2,14 @@
 
 A Windows desktop tool for extracting text from screen regions using OCR, with automatic clipboard copying and text-to-speech playback.
 
+## Screenshots
+
+<p align="center">
+  <img src="./screenshots/app.png" alt="App">
+  <br>
+  <img src="./screenshots/scan.png" alt="Scan">
+</p>
+
 ## Features
 
 - Global hotkey screen capture
@@ -41,3 +49,4 @@ python main.py
 - OpenCC for Chinese character conversion
 - pyttsx3 for text-to-speech
 - PyQt for GUI
+- Windows Language packs for the language you want to TTS
