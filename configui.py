@@ -10,6 +10,12 @@ import settings
 from resources import resource_path
 from tts import speak_text
 
+# Light enough to read on a dark window, still fine on a light one.
+STATUS_OK = "#5FDB74"
+STATUS_WARN = "#FF7A70"
+STATUS_INFO = "#6CB4FF"
+
+
 class ConfigUI(QWidget):
     def __init__(self, history=None):
         super().__init__()
@@ -52,7 +58,7 @@ class ConfigUI(QWidget):
         self.reset_btn.clicked.connect(self.confirm_restore_defaults)
 
         self.status_label = QLabel("")
-        self.status_label.setStyleSheet("font-size: 12px; color: green;")
+        self.status_label.setStyleSheet(f"font-size: 12px; color: {STATUS_OK};")
 
         layout = QVBoxLayout()
         layout.addWidget(QLabel("Recent Scans:"))
@@ -76,7 +82,7 @@ class ConfigUI(QWidget):
             "prefer_ja_over_zh": self.prefer_ja_checkbox.isChecked()
         }
 
-    def show_status(self, message, color="green"):
+    def show_status(self, message, color=STATUS_OK):
         self.status_label.setText(message)
         self.status_label.setStyleSheet(f"color: {color}; font-size: 12px;")
         self.status_timer.start(3000)
@@ -104,7 +110,7 @@ class ConfigUI(QWidget):
         )
 
         self.record_initial_state()
-        self.show_status("Preferences saved.", color="green")
+        self.show_status("Preferences saved.", color=STATUS_OK)
 
     def check_unsaved_changes(self):
         changed = any([
@@ -113,7 +119,7 @@ class ConfigUI(QWidget):
             self.prefer_ja_checkbox.isChecked() != self.initial_config.get("prefer_ja_over_zh")
         ])
         if changed:
-            self.show_status("Unsaved changes", color="red")
+            self.show_status("Unsaved changes", color=STATUS_WARN)
             self.status_timer.stop()
         else:
             self.clear_status()
@@ -149,7 +155,7 @@ class ConfigUI(QWidget):
         self.prefer_ja_checkbox.setChecked(settings.DEFAULTS["prefer_ja_over_zh"])
         self.check_unsaved_changes()
         self.save_config()
-        self.show_status("Defaults restored.", color="blue")
+        self.show_status("Defaults restored.", color=STATUS_INFO)
     
     def connect_signals(self):
         for box in [
