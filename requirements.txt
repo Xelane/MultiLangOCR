@@ -1,7 +1,7 @@
 PyQt6
 pyperclip
 pyttsx3
-keyboard
+pynput
 numpy
 opencc-python-reimplemented
 rapidocr>=3.10
