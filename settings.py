@@ -32,6 +32,7 @@ DEFAULTS = {
     "auto_copy": True,
     "auto_tts": False,
     "prefer_ja_over_zh": False,
+    "welcome_message": True,
     **(_HOTKEYS_WINDOWS if sys.platform == "win32" else _HOTKEYS_OTHER),
 }
 

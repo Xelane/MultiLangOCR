@@ -3,7 +3,7 @@ import os
 import threading
 import traceback
 from PyQt6.QtWidgets import QApplication, QSystemTrayIcon, QMenu, QStyle, QWidget
-from PyQt6.QtCore import QTimer
+from PyQt6.QtCore import QObject, QTimer, pyqtSignal
 from PyQt6.QtGui import QIcon, QAction
 
 import settings
@@ -22,7 +22,7 @@ MAX_HISTORY = 20
 temp_last_text = ""
 temp_last_lang = "en"
 
-overlay = tray = selector = hotkey_manager = ocr_runner = config_window = None
+overlay = tray = selector = hotkey_manager = ocr_runner = config_window = startup = None
 
 def ocr_scan_callback():
     """Start a region scan. Must run on the Qt main thread."""
@@ -138,15 +138,44 @@ def refresh_tray_area():
     if hwnd:
         ctypes.windll.user32.InvalidateRect(hwnd, None, True)
 
-def _warm_up_ocr():
-    try:
-        warm_up()
-    except Exception as e:
-        print(f"[OCR] Warm-up failed: {e}")
-    try:
-        tts.warm_up()
-    except Exception as e:
-        print(f"[TTS] Warm-up failed: {e}")
+WELCOME_TEXT = "MultiLangOCR is ready."
+
+
+class Startup(QObject):
+    """Runs the slow one-time setup in the background, then reports `ready`.
+
+    Loading the OCR models and the speech voices takes a second or two each.
+    Doing it up front means the first real scan and the first speech are fast.
+    """
+    ready = pyqtSignal()
+
+    def __init__(self):
+        super().__init__()
+        self._pending = 0
+        self._lock = threading.Lock()
+
+    def start(self, tasks):
+        """tasks: [(name, function)]. Each runs on its own thread."""
+        self._pending = len(tasks)
+        for name, fn in tasks:
+            threading.Thread(target=self._run, args=(name, fn), daemon=True).start()
+
+    def _run(self, name, fn):
+        try:
+            fn()
+        except Exception as e:  # a failed warm-up must not block startup
+            print(f"[{name}] Warm-up failed: {e}")
+        with self._lock:
+            self._pending -= 1
+            finished = self._pending == 0
+        if finished:
+            self.ready.emit()  # queued to the main thread
+
+
+def on_startup_ready():
+    """Everything is loaded (main thread). Say hello, which also primes the speech engine."""
+    if settings.get("welcome_message"):
+        tts.speak_text(WELCOME_TEXT, "en")
 
 def _log_uncaught(exc_type, exc, tb):
     # PyQt6 aborts the whole process on an uncaught exception in a slot unless
@@ -154,17 +183,18 @@ def _log_uncaught(exc_type, exc, tb):
     traceback.print_exception(exc_type, exc, tb)
 
 def main():
-    global overlay, tray, selector, hotkey_manager, ocr_runner
+    global overlay, tray, selector, hotkey_manager, ocr_runner, startup
     sys.excepthook = _log_uncaught
     print("Starting MultiLangOCR...")
-
-    # Load OCR models in the background so the first scan isn't slow.
-    threading.Thread(target=_warm_up_ocr, daemon=True).start()
 
     app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)
     settings.load()  # once; everything else reads the in-memory copy
     print(f"[Settings] {settings.settings_path()}")
+
+    startup = Startup()
+    startup.ready.connect(on_startup_ready)
+    startup.start([("OCR", warm_up), ("TTS", tts.warm_up)])
 
     overlay = FlashOverlay()
     overlay.hide()
