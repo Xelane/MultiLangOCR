@@ -5,7 +5,6 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QIcon
 import os
-import pyperclip
 import settings
 from resources import resource_path
 from tts import speak_text
@@ -137,7 +136,7 @@ class ConfigUI(QWidget):
         entry = item.data(Qt.ItemDataRole.UserRole)
         speak_text(entry["text"], entry["lang"])
         if self.auto_copy_checkbox.isChecked():
-            pyperclip.copy(entry["text"])
+            QApplication.clipboard().setText(entry["text"])
             self.show_status("Copied to clipboard.")
 
     def confirm_restore_defaults(self):

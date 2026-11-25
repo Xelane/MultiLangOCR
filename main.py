@@ -2,8 +2,6 @@ import sys
 import os
 import threading
 import traceback
-import pyperclip
-import ctypes
 from PyQt6.QtWidgets import QApplication, QSystemTrayIcon, QMenu, QStyle, QWidget
 from PyQt6.QtCore import QTimer
 from PyQt6.QtGui import QIcon, QAction
@@ -69,7 +67,7 @@ def handle_ocr_result(text, lang):
     temp_last_lang = lang
 
     if settings.get("auto_copy"):
-        pyperclip.copy(text)
+        QApplication.clipboard().setText(text)  # main thread, so safe
     if overlay:
         overlay.display_text(text)
     if settings.get("auto_tts"):
@@ -133,6 +131,10 @@ class TrayApp:
             self.open_main_window()
 
 def refresh_tray_area():
+    """Windows keeps a ghost tray icon until the taskbar repaints; nudge it."""
+    if sys.platform != "win32":
+        return
+    import ctypes  # ctypes.windll only exists on Windows
     hwnd = ctypes.windll.user32.FindWindowW("Shell_TrayWnd", None)
     if hwnd:
         ctypes.windll.user32.InvalidateRect(hwnd, None, True)
