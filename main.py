@@ -80,14 +80,26 @@ def handle_ocr_result(text, lang):
     if len(recent_history) > MAX_HISTORY:
         recent_history.pop()
 
+def make_tray_icon(app):
+    if sys.platform == "darwin":
+        # A monochrome "template" image: macOS recolours it to suit the menu bar
+        # (dark on light, white on dark). A @2x file next to it is picked up for Retina.
+        icon = QIcon(resource_path("assets/tray_template.png"))
+        if not icon.isNull():
+            icon.setIsMask(True)
+            return icon
+    icon_path = resource_path("icon.ico")
+    if os.path.exists(icon_path):
+        return QIcon(icon_path)
+    return app.style().standardIcon(QStyle.StandardPixmap.SP_ComputerIcon)
+
+
 class TrayApp:
     def __init__(self, app):
         self.tray_icon = QSystemTrayIcon()
         self.menu = QMenu()
 
-        icon_path = resource_path("icon.ico")
-        icon = QIcon(icon_path) if os.path.exists(icon_path) else app.style().standardIcon(QStyle.StandardPixmap.SP_ComputerIcon)
-        self.tray_icon.setIcon(icon)
+        self.tray_icon.setIcon(make_tray_icon(app))
         self.tray_icon.setToolTip("MultiLangOCR is running. Right-click for options.")
 
         self.tray_icon.activated.connect(self.on_tray_icon_activated)
@@ -177,6 +189,16 @@ def on_startup_ready():
     if settings.get("welcome_message"):
         tts.speak_text(WELCOME_TEXT, "en")
 
+def _make_output_safe():
+    """Make print() unable to raise on text the console can't encode (see ocr._log)."""
+    for stream in (sys.stdout, sys.stderr):  # None in a windowed Windows build
+        if stream is not None and hasattr(stream, "reconfigure"):
+            try:
+                stream.reconfigure(errors="replace")
+            except (ValueError, OSError):
+                pass
+
+
 def _log_uncaught(exc_type, exc, tb):
     # PyQt6 aborts the whole process on an uncaught exception in a slot unless
     # a custom excepthook is installed. Log it and keep the tray app alive.
@@ -184,6 +206,11 @@ def _log_uncaught(exc_type, exc, tb):
 
 def main():
     global overlay, tray, selector, hotkey_manager, ocr_runner, startup
+    _make_output_safe()
+    if "--self-test" in sys.argv:  # CI check of a (frozen) build; see selftest.py
+        import selftest
+        position = sys.argv.index("--self-test") + 1
+        sys.exit(selftest.run(sys.argv[position] if position < len(sys.argv) else None))
     sys.excepthook = _log_uncaught
     print("Starting MultiLangOCR...")
 

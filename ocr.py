@@ -204,6 +204,20 @@ def add_margin(img, pad=DETECT_MARGIN_PX):
 
 # --- OCR + Language Wrapper ---
 
+def _log(message):
+    """Debug output must never cost us a result.
+
+    stdout can be unable to encode CJK text (an app started from the Finder has
+    no locale; a redirected Windows console may be cp1252). print() would then
+    raise, the caller would treat the scan as failed, and a correct OCR result
+    would be thrown away.
+    """
+    try:
+        print(message)
+    except Exception:
+        pass
+
+
 def extract_text_with_lang(img_bgr):
     if not isinstance(img_bgr, np.ndarray) or img_bgr.size == 0:
         print("[OCR] Invalid image input.")
@@ -238,5 +252,5 @@ def extract_text_with_lang(img_bgr):
 
     full_text = join_lines(lines, detected_lang)
     avg_conf = sum(scores) / len(scores)
-    print(f"[OCR] '{full_text[:30]}' (lang={detected_lang}, conf={avg_conf:.3f})")
+    _log(f"[OCR] '{full_text[:30]}' (lang={detected_lang}, conf={avg_conf:.3f})")
     return full_text, detected_lang
