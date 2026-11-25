@@ -10,7 +10,8 @@ from PyQt6.QtCore import QTimer
 from PyQt6.QtGui import QIcon, QAction
 
 from selector import RegionSelector
-from ocr import extract_text_with_lang, warm_up
+from ocr import warm_up
+from ocr_worker import OcrRunner
 from tts import speak_text
 from ui import FlashOverlay
 from hotkeys import HotkeyManager, default_hotkeys
@@ -22,7 +23,7 @@ MAX_HISTORY = 20
 temp_last_text = ""
 temp_last_lang = "en"
 
-overlay = tray = selector = hotkey_manager = config_window = None
+overlay = tray = selector = hotkey_manager = ocr_runner = config_window = None
 
 def load_hotkeys():
     default_keys = default_hotkeys()
@@ -41,6 +42,10 @@ def load_hotkeys():
 def ocr_scan_callback():
     """Start a region scan. Must run on the Qt main thread."""
     global selector
+    if ocr_runner and ocr_runner.busy:
+        if overlay:
+            overlay.display_text("Still scanning...")
+        return
     if selector is None:
         selector = RegionSelector()
         selector.selection_done.connect(handle_region)
@@ -70,14 +75,21 @@ def load_app_settings():
     return defaults
 
 def handle_region(img_array):
-    global temp_last_text, temp_last_lang
-
+    """Selector finished: hand the image to the OCR thread."""
     if img_array is None:
         print("[OCR] No valid image selected.")
         return
+    if overlay:
+        overlay.display_text("Scanning...")
+    ocr_runner.submit(img_array)
 
-    text, lang = extract_text_with_lang(img_array)
+def handle_ocr_result(text, lang):
+    """OCR finished (runs on the main thread)."""
+    global temp_last_text, temp_last_lang
+
     if not text:
+        if overlay:
+            overlay.display_text("No text found")
         return
 
     temp_last_text = text
@@ -165,7 +177,7 @@ def _log_uncaught(exc_type, exc, tb):
     traceback.print_exception(exc_type, exc, tb)
 
 def main():
-    global overlay, tray, selector, hotkey_manager
+    global overlay, tray, selector, hotkey_manager, ocr_runner
     sys.excepthook = _log_uncaught
     print("Starting MultiLangOCR...")
 
@@ -177,6 +189,10 @@ def main():
 
     overlay = FlashOverlay()
     overlay.hide()
+
+    ocr_runner = OcrRunner()
+    ocr_runner.finished.connect(handle_ocr_result)
+    app.aboutToQuit.connect(ocr_runner.shutdown)
 
     tray_controller = TrayApp(app)
 
