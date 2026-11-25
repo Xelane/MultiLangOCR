@@ -36,9 +36,13 @@ def qimage_to_bgr(image):
     ptr = image.constBits()
     ptr.setsize(stride * h)
     rows = np.frombuffer(ptr, dtype=np.uint8).reshape(h, stride)
-    # Rows are padded to 4 bytes; slice the padding off, and copy so the
-    # array doesn't point into memory owned by the QImage.
-    return np.ascontiguousarray(rows[:, : w * 3].reshape(h, w, 3))
+    # Rows are padded to 4 bytes; slice the padding off. This MUST be a real
+    # copy: the array above points into memory owned by `image`, which is freed
+    # when this function returns. (np.ascontiguousarray is not a copy when the
+    # data is already contiguous, i.e. when the width is a multiple of 4 and
+    # there is no padding - that returned a dangling pointer, so about one scan
+    # in four was read from freed memory.)
+    return rows[:, : w * 3].reshape(h, w, 3).copy()
 
 
 class _ScreenOverlay(QWidget):
