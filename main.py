@@ -2,6 +2,7 @@ import sys
 import os
 import json
 import threading
+import traceback
 import pyperclip
 import ctypes
 from PyQt6.QtWidgets import QApplication, QSystemTrayIcon, QMenu, QStyle, QWidget
@@ -165,8 +166,14 @@ def _warm_up_ocr():
     except Exception as e:
         print(f"[OCR] Warm-up failed: {e}")
 
+def _log_uncaught(exc_type, exc, tb):
+    # PyQt6 aborts the whole process on an uncaught exception in a slot unless
+    # a custom excepthook is installed. Log it and keep the tray app alive.
+    traceback.print_exception(exc_type, exc, tb)
+
 def main():
     global overlay, tray, selector, main_invoker
+    sys.excepthook = _log_uncaught
     print("Starting MultiLangOCR...")
 
     # Load OCR models in the background so the first scan isn't slow.
