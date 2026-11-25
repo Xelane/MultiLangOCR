@@ -4,10 +4,25 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QIcon
-import json
 import os
-import pyperclip
-from tts import speak_text
+import settings
+from resources import resource_path
+import tts
+
+# Light enough to read on a dark window, still fine on a light one.
+STATUS_OK = "#5FDB74"
+STATUS_WARN = "#FF7A70"
+STATUS_INFO = "#6CB4FF"
+
+
+# Setting key -> checkbox label, in display order.
+CHECKBOXES = {
+    "auto_copy": "Copy to Clipboard on capture",
+    "auto_tts": "Automatic TTS Playback for every capture",
+    "prefer_ja_over_zh": "Prefer Japanese over Chinese when ambiguous",
+    "welcome_message": "Speak a welcome message when the app starts",
+}
+
 
 class ConfigUI(QWidget):
     def __init__(self, history=None):
@@ -15,7 +30,7 @@ class ConfigUI(QWidget):
         self.initial_config = {}
         self.setWindowTitle("MultiLangOCR")
         self.setMinimumSize(500, 400)
-        icon_path = "icon.ico"
+        icon_path = resource_path("icon.ico")
         if os.path.exists(icon_path):
             self.setWindowIcon(QIcon(icon_path))
 
@@ -28,21 +43,17 @@ class ConfigUI(QWidget):
         self.load_config()
         self.record_initial_state()
         self.load_history()
-        self.connect_signals()
 
     def init_ui(self):
         self.list_widget = QListWidget()
         self.list_widget.itemClicked.connect(self.handle_item_click)
 
-        self.auto_copy_checkbox = QCheckBox("Copy to Clipboard on capture")
-        self.auto_tts_checkbox = QCheckBox("Automatic TTS Playback for every capture")
-        self.prefer_ja_checkbox = QCheckBox("Prefer Japanese over Chinese when ambiguous")
-
-        for box in [
-            self.auto_copy_checkbox,
-            self.auto_tts_checkbox,
-            self.prefer_ja_checkbox
-        ]:
+        self.boxes = {key: QCheckBox(label) for key, label in CHECKBOXES.items()}
+        self.auto_copy_checkbox = self.boxes["auto_copy"]
+        self.auto_tts_checkbox = self.boxes["auto_tts"]
+        self.prefer_ja_checkbox = self.boxes["prefer_ja_over_zh"]
+        self.welcome_checkbox = self.boxes["welcome_message"]
+        for box in self.boxes.values():
             box.stateChanged.connect(self.check_unsaved_changes)
 
         self.save_btn = QPushButton("Save Settings")
@@ -51,14 +62,13 @@ class ConfigUI(QWidget):
         self.reset_btn.clicked.connect(self.confirm_restore_defaults)
 
         self.status_label = QLabel("")
-        self.status_label.setStyleSheet("font-size: 12px; color: green;")
+        self.status_label.setStyleSheet(f"font-size: 12px; color: {STATUS_OK};")
 
         layout = QVBoxLayout()
         layout.addWidget(QLabel("Recent Scans:"))
         layout.addWidget(self.list_widget)
-        layout.addWidget(self.auto_copy_checkbox)
-        layout.addWidget(self.auto_tts_checkbox)
-        layout.addWidget(self.prefer_ja_checkbox)
+        for box in self.boxes.values():
+            layout.addWidget(box)
         layout.addWidget(self.status_label)
 
         btn_layout = QHBoxLayout()
@@ -69,13 +79,9 @@ class ConfigUI(QWidget):
         self.setLayout(layout)
 
     def record_initial_state(self):
-        self.initial_config = {
-            "auto_copy": self.auto_copy_checkbox.isChecked(),
-            "auto_tts": self.auto_tts_checkbox.isChecked(),
-            "prefer_ja_over_zh": self.prefer_ja_checkbox.isChecked()
-        }
+        self.initial_config = {key: box.isChecked() for key, box in self.boxes.items()}
 
-    def show_status(self, message, color="green"):
+    def show_status(self, message, color=STATUS_OK):
         self.status_label.setText(message)
         self.status_label.setStyleSheet(f"color: {color}; font-size: 12px;")
         self.status_timer.start(3000)
@@ -84,42 +90,22 @@ class ConfigUI(QWidget):
         self.status_label.setText("")
 
     def load_config(self):
-        if os.path.exists("config.json"):
-            with open("config.json", "r") as f:
-                data = json.load(f)
-
-            self.auto_copy_checkbox.blockSignals(True)
-            self.auto_tts_checkbox.blockSignals(True)
-            self.prefer_ja_checkbox.blockSignals(True)
-
-            self.auto_copy_checkbox.setChecked(data.get("auto_copy", True))
-            self.auto_tts_checkbox.setChecked(data.get("auto_tts", False))
-            self.prefer_ja_checkbox.setChecked(data.get("prefer_ja_over_zh", False))
-
-            self.auto_copy_checkbox.blockSignals(False)
-            self.auto_tts_checkbox.blockSignals(False)
-            self.prefer_ja_checkbox.blockSignals(False)
+        for key, box in self.boxes.items():
+            box.blockSignals(True)
+            box.setChecked(settings.get(key))
+            box.blockSignals(False)
 
     def save_config(self):
-        data = {
-            "auto_copy": self.auto_copy_checkbox.isChecked(),
-            "auto_tts": self.auto_tts_checkbox.isChecked(),
-            "prefer_ja_over_zh": self.prefer_ja_checkbox.isChecked()
-        }
-        with open("config.json", "w") as f:
-            json.dump(data, f, indent=4)
+        # update() keeps every other setting (such as the hotkeys) untouched.
+        settings.update(**{key: box.isChecked() for key, box in self.boxes.items()})
 
         self.record_initial_state()
-        self.show_status("Preferences saved.", color="green")
+        self.show_status("Preferences saved.", color=STATUS_OK)
 
     def check_unsaved_changes(self):
-        changed = any([
-            self.auto_copy_checkbox.isChecked() != self.initial_config.get("auto_copy"),
-            self.auto_tts_checkbox.isChecked() != self.initial_config.get("auto_tts"),
-            self.prefer_ja_checkbox.isChecked() != self.initial_config.get("prefer_ja_over_zh")
-        ])
+        changed = any(box.isChecked() != self.initial_config.get(key) for key, box in self.boxes.items())
         if changed:
-            self.show_status("Unsaved changes", color="red")
+            self.show_status("Unsaved changes", color=STATUS_WARN)
             self.status_timer.stop()
         else:
             self.clear_status()
@@ -135,9 +121,9 @@ class ConfigUI(QWidget):
 
     def handle_item_click(self, item):
         entry = item.data(Qt.ItemDataRole.UserRole)
-        speak_text(entry["text"], entry["lang"])
+        tts.speak_text(entry["text"], entry["lang"])
         if self.auto_copy_checkbox.isChecked():
-            pyperclip.copy(entry["text"])
+            QApplication.clipboard().setText(entry["text"])
             self.show_status("Copied to clipboard.")
 
     def confirm_restore_defaults(self):
@@ -150,20 +136,11 @@ class ConfigUI(QWidget):
             self.restore_defaults()
 
     def restore_defaults(self):
-        self.auto_copy_checkbox.setChecked(True)
-        self.auto_tts_checkbox.setChecked(False)
-        self.prefer_ja_checkbox.setChecked(False)
+        for key, box in self.boxes.items():
+            box.setChecked(settings.DEFAULTS[key])
         self.check_unsaved_changes()
         self.save_config()
-        self.show_status("Defaults restored.", color="blue")
-    
-    def connect_signals(self):
-        for box in [
-            self.auto_copy_checkbox,
-            self.auto_tts_checkbox,
-            self.prefer_ja_checkbox
-        ]:
-            box.stateChanged.connect(self.check_unsaved_changes)
+        self.show_status("Defaults restored.", color=STATUS_INFO)
 
 
 def launch_config_ui(history=[]):

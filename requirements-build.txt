@@ -1,0 +1,2 @@
+# Extra tools needed to build the distributable app (not needed to run from source)
+pyinstaller>=6.10

@@ -1,18 +1,19 @@
 import sys
 import os
-import json
 import threading
-import pyperclip
-import ctypes
+import traceback
 from PyQt6.QtWidgets import QApplication, QSystemTrayIcon, QMenu, QStyle, QWidget
-from PyQt6.QtCore import QTimer, pyqtSignal, QObject
+from PyQt6.QtCore import QObject, QTimer, pyqtSignal
 from PyQt6.QtGui import QIcon, QAction
 
+import settings
+from resources import resource_path
 from selector import RegionSelector
-from ocr import extract_text_with_lang
-from tts import speak_text
+from ocr import warm_up
+from ocr_worker import OcrRunner
+import tts
 from ui import FlashOverlay
-from hotkeys import setup_hotkeys
+from hotkeys import HotkeyManager, default_hotkeys
 from configui import launch_config_ui
 
 recent_history = []
@@ -21,77 +22,55 @@ MAX_HISTORY = 20
 temp_last_text = ""
 temp_last_lang = "en"
 
-overlay = tray = selector = main_invoker = config_window = None
+overlay = tray = selector = hotkey_manager = ocr_runner = config_window = startup = None
 
-class MainThreadInvoker(QObject):
-    show_selector_signal = pyqtSignal()
-
-def load_hotkeys():
-    default_keys = {
-        "ocr_hotkey": "alt+q",
-        "tts_hotkey": "alt+w"
-    }
-    try:
-        if os.path.exists("config.json"):
-            with open("config.json", "r") as f:
-                config = json.load(f)
-                return {
-                    "ocr_hotkey": config.get("ocr_hotkey", default_keys["ocr_hotkey"]),
-                    "tts_hotkey": config.get("tts_hotkey", default_keys["tts_hotkey"])
-                }
-    except Exception as e:
-        print(f"[CONFIG] Failed to load hotkeys: {e}")
-    return default_keys
-
-def _show_selector_on_main_thread():
+def ocr_scan_callback():
+    """Start a region scan. Must run on the Qt main thread."""
     global selector
+    if ocr_runner and ocr_runner.busy:
+        if overlay:
+            overlay.display_text("Still scanning...")
+        return
     if selector is None:
         selector = RegionSelector()
         selector.selection_done.connect(handle_region)
-    QTimer.singleShot(100, lambda: selector.show())
-
-def ocr_scan_callback():
-    main_invoker.show_selector_signal.emit()
+    if selector.is_active:
+        return
+    if overlay:
+        overlay.hide()  # keep the status overlay out of the screenshot
+    QTimer.singleShot(100, selector.start)
 
 def tts_callback():
     if temp_last_text:
-        speak_text(temp_last_text, temp_last_lang)
-
-def load_app_settings():
-    defaults = {
-        "auto_copy": True,
-        "auto_tts": False
-    }
-    try:
-        if os.path.exists("config.json"):
-            with open("config.json", "r") as f:
-                data = json.load(f)
-                return {**defaults, **data}
-    except Exception as e:
-        print(f"[CONFIG] Failed to load app settings: {e}")
-    return defaults
+        tts.speak_text(temp_last_text, temp_last_lang)  # returns at once; interrupts earlier speech
 
 def handle_region(img_array):
-    global temp_last_text, temp_last_lang
-
+    """Selector finished: hand the image to the OCR thread."""
     if img_array is None:
         print("[OCR] No valid image selected.")
         return
+    if overlay:
+        overlay.display_text("Scanning...")
+    ocr_runner.submit(img_array)
 
-    text, lang = extract_text_with_lang(img_array)
+def handle_ocr_result(text, lang):
+    """OCR finished (runs on the main thread)."""
+    global temp_last_text, temp_last_lang
+
     if not text:
+        if overlay:
+            overlay.display_text("No text found")
         return
 
     temp_last_text = text
     temp_last_lang = lang
 
-    settings = load_app_settings()
-    if settings.get("auto_copy", True):
-        pyperclip.copy(text)
+    if settings.get("auto_copy"):
+        QApplication.clipboard().setText(text)  # main thread, so safe
     if overlay:
         overlay.display_text(text)
-    if settings.get("auto_tts", False):
-        threading.Thread(target=speak_text, args=(text, lang), daemon=True).start()
+    if settings.get("auto_tts"):
+        tts.speak_text(text, lang)
 
     recent_history.insert(0, {"text": text, "lang": lang})
     if config_window and config_window.isVisible():
@@ -101,17 +80,34 @@ def handle_region(img_array):
     if len(recent_history) > MAX_HISTORY:
         recent_history.pop()
 
+def make_tray_icon(app):
+    if sys.platform == "darwin":
+        # A monochrome "template" image: macOS recolours it to suit the menu bar
+        # (dark on light, white on dark). A @2x file next to it is picked up for Retina.
+        icon = QIcon(resource_path("assets/tray_template.png"))
+        if not icon.isNull():
+            icon.setIsMask(True)
+            return icon
+    icon_path = resource_path("icon.ico")
+    if os.path.exists(icon_path):
+        return QIcon(icon_path)
+    return app.style().standardIcon(QStyle.StandardPixmap.SP_ComputerIcon)
+
+
 class TrayApp:
     def __init__(self, app):
         self.tray_icon = QSystemTrayIcon()
         self.menu = QMenu()
 
-        icon_path = "icon.ico"
-        icon = QIcon(icon_path) if os.path.exists(icon_path) else app.style().standardIcon(QStyle.StandardPixmap.SP_ComputerIcon)
-        self.tray_icon.setIcon(icon)
+        self.tray_icon.setIcon(make_tray_icon(app))
         self.tray_icon.setToolTip("MultiLangOCR is running. Right-click for options.")
 
         self.tray_icon.activated.connect(self.on_tray_icon_activated)
+
+        self.scan_action = QAction("Scan now")
+        # Wait for the menu to finish closing so it isn't in the screenshot.
+        self.scan_action.triggered.connect(lambda: QTimer.singleShot(300, ocr_scan_callback))
+        self.menu.addAction(self.scan_action)
 
         self.open_action = QAction("Open MultiLangOCR")
         self.open_action.triggered.connect(self.open_main_window)
@@ -146,28 +142,113 @@ class TrayApp:
             self.open_main_window()
 
 def refresh_tray_area():
+    """Windows keeps a ghost tray icon until the taskbar repaints; nudge it."""
+    if sys.platform != "win32":
+        return
+    import ctypes  # ctypes.windll only exists on Windows
     hwnd = ctypes.windll.user32.FindWindowW("Shell_TrayWnd", None)
     if hwnd:
         ctypes.windll.user32.InvalidateRect(hwnd, None, True)
 
+WELCOME_TEXT = "MultiLangOCR is ready."
+
+
+class Startup(QObject):
+    """Runs the slow one-time setup in the background, then reports `ready`.
+
+    Loading the OCR models and the speech voices takes a second or two each.
+    Doing it up front means the first real scan and the first speech are fast.
+    """
+    ready = pyqtSignal()
+
+    def __init__(self):
+        super().__init__()
+        self._pending = 0
+        self._lock = threading.Lock()
+
+    def start(self, tasks):
+        """tasks: [(name, function)]. Each runs on its own thread."""
+        self._pending = len(tasks)
+        for name, fn in tasks:
+            threading.Thread(target=self._run, args=(name, fn), daemon=True).start()
+
+    def _run(self, name, fn):
+        try:
+            fn()
+        except Exception as e:  # a failed warm-up must not block startup
+            print(f"[{name}] Warm-up failed: {e}")
+        with self._lock:
+            self._pending -= 1
+            finished = self._pending == 0
+        if finished:
+            self.ready.emit()  # queued to the main thread
+
+
+def on_startup_ready():
+    """Everything is loaded (main thread). Say hello, which also primes the speech engine."""
+    if settings.get("welcome_message"):
+        tts.speak_text(WELCOME_TEXT, "en")
+
+def _make_output_safe():
+    """Make print() unable to raise on text the console can't encode (see ocr._log)."""
+    for stream in (sys.stdout, sys.stderr):  # None in a windowed Windows build
+        if stream is not None and hasattr(stream, "reconfigure"):
+            try:
+                stream.reconfigure(errors="replace")
+            except (ValueError, OSError):
+                pass
+
+
+def _log_uncaught(exc_type, exc, tb):
+    # PyQt6 aborts the whole process on an uncaught exception in a slot unless
+    # a custom excepthook is installed. Log it and keep the tray app alive.
+    traceback.print_exception(exc_type, exc, tb)
+
 def main():
-    global overlay, tray, selector, main_invoker
+    global overlay, tray, selector, hotkey_manager, ocr_runner, startup
+    _make_output_safe()
+    if "--self-test" in sys.argv:  # CI check of a (frozen) build; see selftest.py
+        import selftest
+        position = sys.argv.index("--self-test") + 1
+        sys.exit(selftest.run(sys.argv[position] if position < len(sys.argv) else None))
+    sys.excepthook = _log_uncaught
     print("Starting MultiLangOCR...")
 
     app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)
+    settings.load()  # once; everything else reads the in-memory copy
+    print(f"[Settings] {settings.settings_path()}")
 
-    main_invoker = MainThreadInvoker()
-    main_invoker.show_selector_signal.connect(_show_selector_on_main_thread)
+    startup = Startup()
+    startup.ready.connect(on_startup_ready)
+    startup.start([("OCR", warm_up), ("TTS", tts.warm_up)])
 
     overlay = FlashOverlay()
     overlay.hide()
 
-    tray_controller = TrayApp(app)
-    overlay.display_text("MultiLangOCR is running")
+    ocr_runner = OcrRunner()
+    ocr_runner.finished.connect(handle_ocr_result)
+    app.aboutToQuit.connect(ocr_runner.shutdown)
+    app.aboutToQuit.connect(tts.stop_speaking)  # don't keep talking after quit
 
-    keys = load_hotkeys()
-    QTimer.singleShot(0, lambda: setup_hotkeys(keys["ocr_hotkey"], ocr_scan_callback, keys["tts_hotkey"], tts_callback))
+    tray_controller = TrayApp(app)
+
+    keys = {"ocr_hotkey": settings.get("ocr_hotkey"), "tts_hotkey": settings.get("tts_hotkey")}
+    try:
+        hotkey_manager = HotkeyManager(keys["ocr_hotkey"], keys["tts_hotkey"])
+    except ValueError as e:
+        print(f"[Hotkeys] Invalid hotkey in config ({e}); using the defaults.")
+        keys = default_hotkeys()
+        hotkey_manager = HotkeyManager(keys["ocr_hotkey"], keys["tts_hotkey"])
+    hotkey_manager.ocr_triggered.connect(ocr_scan_callback)
+    hotkey_manager.tts_triggered.connect(tts_callback)
+    app.aboutToQuit.connect(hotkey_manager.stop)
+    QTimer.singleShot(0, hotkey_manager.start)
+
+    overlay.display_text(f"MultiLangOCR is running - scan: {hotkey_manager.ocr_label}")
+    tray_controller.tray_icon.setToolTip(
+        f"MultiLangOCR - scan: {hotkey_manager.ocr_label}, read aloud: {hotkey_manager.tts_label}"
+    )
 
     keep_alive = QTimer()
     keep_alive.start(10000)

@@ -41,3 +41,6 @@ build/
 
 # Config
 config.json
+
+# ...except the packaging recipe
+!packaging/*.spec
