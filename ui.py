@@ -14,6 +14,8 @@ class FlashOverlay(QWidget):
         )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
+        # macOS hides Tool windows while the app is inactive (always, for a tray app).
+        self.setAttribute(Qt.WidgetAttribute.WA_MacAlwaysShowToolWindow)
         self.setWindowOpacity(0.9)
         self.setFixedSize(800, 100)
 

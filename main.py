@@ -48,7 +48,11 @@ def _show_selector_on_main_thread():
     if selector is None:
         selector = RegionSelector()
         selector.selection_done.connect(handle_region)
-    QTimer.singleShot(100, lambda: selector.show())
+    if selector.is_active:
+        return
+    if overlay:
+        overlay.hide()  # keep the status overlay out of the screenshot
+    QTimer.singleShot(100, selector.start)
 
 def ocr_scan_callback():
     main_invoker.show_selector_signal.emit()
@@ -112,6 +116,11 @@ class TrayApp:
         self.tray_icon.setToolTip("MultiLangOCR is running. Right-click for options.")
 
         self.tray_icon.activated.connect(self.on_tray_icon_activated)
+
+        self.scan_action = QAction("Scan now")
+        # Wait for the menu to finish closing so it isn't in the screenshot.
+        self.scan_action.triggered.connect(lambda: QTimer.singleShot(300, ocr_scan_callback))
+        self.menu.addAction(self.scan_action)
 
         self.open_action = QAction("Open MultiLangOCR")
         self.open_action.triggered.connect(self.open_main_window)
