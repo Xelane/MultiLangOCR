@@ -157,8 +157,12 @@ Nothing leaves your computer. Screenshots are processed in memory and are only w
 
 ## Third-party software
 
-MultiLangOCR uses [RapidOCR](https://github.com/RapidAI/RapidOCR) with the PP-OCR models from [PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR) (both Apache-2.0), [ONNX Runtime](https://github.com/microsoft/onnxruntime), [OpenCC](https://github.com/BYVoid/OpenCC) for Simplified/Traditional detection, [pynput](https://github.com/moses-palmer/pynput) for hotkeys, and [PyQt6](https://www.riverbankcomputing.com/software/pyqt/) for the interface. PyQt6 is available under the GPL v3 or a commercial licence, which applies to the packaged builds that include it.
+MultiLangOCR uses [RapidOCR](https://github.com/RapidAI/RapidOCR) with the PP-OCR models from [PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR) (both Apache-2.0), [ONNX Runtime](https://github.com/microsoft/onnxruntime), [OpenCC](https://github.com/BYVoid/OpenCC) for Simplified/Traditional detection, [pynput](https://github.com/moses-palmer/pynput) for hotkeys, and [PyQt6](https://www.riverbankcomputing.com/software/pyqt/) for the interface. PyQt6 is available under the GPL v3 or a commercial licence; MultiLangOCR itself is GPL v3, which is what makes the two compatible.
 
 ## Licence
 
-[MIT](LICENSE) for the MultiLangOCR source code.
+MultiLangOCR is free software under the **GNU General Public License, version 3** (see [LICENSE](LICENSE)).
+
+Copyright (C) 2025 Ojas Ninawe
+
+You may use, study, share and modify it. If you distribute it, or a modified version, you must do so under the same licence and make the source code available. Versions published before this change remain available under the MIT licence they were released with.
