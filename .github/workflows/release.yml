@@ -2,11 +2,19 @@ name: Release
 
 # Push a tag such as v2.0.0 (it must match version.py) to build the Windows and
 # macOS apps and attach them to a GitHub release.
-# "Run workflow" on the Actions tab builds and tests both without publishing.
+# A pull request into main builds and self-tests both apps without publishing,
+# and so does "Run workflow" on the Actions tab (once this file is on main).
 on:
   push:
     tags: ["v*"]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
+
+# A newer push to the same pull request replaces its still-running build.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
