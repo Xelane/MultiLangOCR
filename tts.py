@@ -5,14 +5,17 @@
 
 Both are safe to call from the Qt main thread and from any other thread.
 
-    macOS    the `say` command in a subprocess, killed to interrupt
-    Windows  SAPI through pyttsx3, on one dedicated thread
+    macOS    NSSpeechSynthesizer in-process (starts speaking in ~0.3 s); falls
+             back to the `say` command, which needs ~1 s to launch each time.
+             Call from the main thread (the Qt thread) - AppKit expects it.
+    Windows  SAPI through pyttsx3, on one dedicated thread (any thread may call)
 """
 import queue
 import re
 import subprocess
 import sys
 import threading
+import time
 
 IS_MAC = sys.platform == "darwin"
 IS_WIN = sys.platform == "win32"
@@ -74,7 +77,9 @@ def choose_voice(voices, lang):
     return None
 
 
-class _MacSpeaker:
+class _SaySpeaker:
+    """Fallback: the `say` command in a subprocess, killed to interrupt."""
+
     def __init__(self):
         self._lock = threading.Lock()
         self._proc = None
@@ -127,6 +132,78 @@ class _MacSpeaker:
             except subprocess.TimeoutExpired:
                 proc.kill()
                 proc.wait()
+
+
+class _CocoaSpeaker:
+    """One long-lived NSSpeechSynthesizer: no process to launch per request."""
+
+    START_SETTLE_SECONDS = 0.1
+
+    def __init__(self):
+        from AppKit import NSSpeechSynthesizer  # ImportError if PyObjC/AppKit is unavailable
+        self._ns = NSSpeechSynthesizer
+        self._lock = threading.Lock()
+        self._voices = None     # [(name, locale)] in the shape choose_voice() expects
+        self._ids = {}          # voice name -> NSSpeechSynthesizer voice identifier
+        self._synth = None
+        self._voice_id = object()  # sentinel: no voice chosen yet
+        self._started_at = 0.0
+
+    def _installed_voices(self):
+        if self._voices is None:
+            voices = []
+            for identifier in self._ns.availableVoices():
+                attrs = self._ns.attributesForVoice_(identifier)
+                name = str(attrs.get("VoiceName") or "")
+                locale = str(attrs.get("VoiceLocaleIdentifier") or "")
+                if name and locale:
+                    voices.append((name, locale))
+                    self._ids.setdefault(name, str(identifier))
+            self._voices = voices
+        return self._voices
+
+    def warm_up(self):
+        with self._lock:  # about 1 s: call from a background thread
+            self._installed_voices()
+
+    def speak(self, text, lang):
+        with self._lock:
+            name = choose_voice(self._installed_voices(), lang)
+            identifier = self._ids.get(name) if name else None
+            if self._synth is None:
+                self._synth = self._ns.alloc().init()
+            self._stop_synth()
+            if identifier != self._voice_id:
+                self._synth.setVoice_(identifier)  # None = the system default voice
+                self._voice_id = identifier
+            if name:
+                print(f"[TTS] Using voice: {name}")
+            else:
+                print(f"[TTS] No voice installed for '{lang}', using the system default.")
+            self._started_at = time.monotonic()
+            if not self._synth.startSpeakingString_(text):
+                print("[TTS] The speech synthesizer could not start speaking.")
+
+    def stop(self):
+        with self._lock:
+            if self._synth is not None:
+                self._stop_synth()
+
+    def _stop_synth(self):
+        # macOS silently drops a stop that arrives within ~50 ms of the start
+        # (the speech then plays on), so let a just-started speech get going first.
+        wait = self.START_SETTLE_SECONDS - (time.monotonic() - self._started_at)
+        if wait > 0:
+            time.sleep(wait)
+        self._synth.stopSpeaking()
+
+
+def _make_mac_speaker():
+    try:
+        return _CocoaSpeaker()
+    except Exception as e:  # AppKit missing, or removed in a future macOS
+        print(f"[TTS] NSSpeechSynthesizer unavailable ({e}); using the 'say' command.")
+        return _SaySpeaker()
 
 
 # --- Windows -------------------------------------------------------------------
@@ -241,7 +318,7 @@ def _get_speaker():
     with _speaker_lock:
         if _speaker is None:
             if IS_MAC:
-                _speaker = _MacSpeaker()
+                _speaker = _make_mac_speaker()
             elif IS_WIN:
                 _speaker = _WindowsSpeaker()
             else:
