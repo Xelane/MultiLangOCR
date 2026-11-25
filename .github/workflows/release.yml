@@ -31,11 +31,17 @@ jobs:
             os: windows-latest
             asset: MultiLangOCR-windows-x64.zip
           - name: macos
-            os: macos-14 # Apple Silicon
+            os: macos-latest # Apple Silicon; the check below fails the build if that ever changes
             asset: MultiLangOCR-macos-arm64.zip
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Check this is an Apple Silicon runner (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          echo "Runner architecture: $(uname -m)"
+          test "$(uname -m)" = "arm64"
 
       - uses: actions/setup-python@v5
         with:
