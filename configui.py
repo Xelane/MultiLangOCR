@@ -4,9 +4,10 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QIcon
-import json
 import os
 import pyperclip
+import settings
+from resources import resource_path
 from tts import speak_text
 
 class ConfigUI(QWidget):
@@ -15,7 +16,7 @@ class ConfigUI(QWidget):
         self.initial_config = {}
         self.setWindowTitle("MultiLangOCR")
         self.setMinimumSize(500, 400)
-        icon_path = "icon.ico"
+        icon_path = resource_path("icon.ico")
         if os.path.exists(icon_path):
             self.setWindowIcon(QIcon(icon_path))
 
@@ -84,30 +85,23 @@ class ConfigUI(QWidget):
         self.status_label.setText("")
 
     def load_config(self):
-        if os.path.exists("config.json"):
-            with open("config.json", "r") as f:
-                data = json.load(f)
-
-            self.auto_copy_checkbox.blockSignals(True)
-            self.auto_tts_checkbox.blockSignals(True)
-            self.prefer_ja_checkbox.blockSignals(True)
-
-            self.auto_copy_checkbox.setChecked(data.get("auto_copy", True))
-            self.auto_tts_checkbox.setChecked(data.get("auto_tts", False))
-            self.prefer_ja_checkbox.setChecked(data.get("prefer_ja_over_zh", False))
-
-            self.auto_copy_checkbox.blockSignals(False)
-            self.auto_tts_checkbox.blockSignals(False)
-            self.prefer_ja_checkbox.blockSignals(False)
+        boxes = {
+            "auto_copy": self.auto_copy_checkbox,
+            "auto_tts": self.auto_tts_checkbox,
+            "prefer_ja_over_zh": self.prefer_ja_checkbox,
+        }
+        for key, box in boxes.items():
+            box.blockSignals(True)
+            box.setChecked(settings.get(key))
+            box.blockSignals(False)
 
     def save_config(self):
-        data = {
-            "auto_copy": self.auto_copy_checkbox.isChecked(),
-            "auto_tts": self.auto_tts_checkbox.isChecked(),
-            "prefer_ja_over_zh": self.prefer_ja_checkbox.isChecked()
-        }
-        with open("config.json", "w") as f:
-            json.dump(data, f, indent=4)
+        # update() keeps every other setting (such as the hotkeys) untouched.
+        settings.update(
+            auto_copy=self.auto_copy_checkbox.isChecked(),
+            auto_tts=self.auto_tts_checkbox.isChecked(),
+            prefer_ja_over_zh=self.prefer_ja_checkbox.isChecked(),
+        )
 
         self.record_initial_state()
         self.show_status("Preferences saved.", color="green")
@@ -150,9 +144,9 @@ class ConfigUI(QWidget):
             self.restore_defaults()
 
     def restore_defaults(self):
-        self.auto_copy_checkbox.setChecked(True)
-        self.auto_tts_checkbox.setChecked(False)
-        self.prefer_ja_checkbox.setChecked(False)
+        self.auto_copy_checkbox.setChecked(settings.DEFAULTS["auto_copy"])
+        self.auto_tts_checkbox.setChecked(settings.DEFAULTS["auto_tts"])
+        self.prefer_ja_checkbox.setChecked(settings.DEFAULTS["prefer_ja_over_zh"])
         self.check_unsaved_changes()
         self.save_config()
         self.show_status("Defaults restored.", color="blue")

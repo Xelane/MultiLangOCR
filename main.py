@@ -1,6 +1,5 @@
 import sys
 import os
-import json
 import threading
 import traceback
 import pyperclip
@@ -9,6 +8,8 @@ from PyQt6.QtWidgets import QApplication, QSystemTrayIcon, QMenu, QStyle, QWidge
 from PyQt6.QtCore import QTimer
 from PyQt6.QtGui import QIcon, QAction
 
+import settings
+from resources import resource_path
 from selector import RegionSelector
 from ocr import warm_up
 from ocr_worker import OcrRunner
@@ -24,20 +25,6 @@ temp_last_text = ""
 temp_last_lang = "en"
 
 overlay = tray = selector = hotkey_manager = ocr_runner = config_window = None
-
-def load_hotkeys():
-    default_keys = default_hotkeys()
-    try:
-        if os.path.exists("config.json"):
-            with open("config.json", "r") as f:
-                config = json.load(f)
-                return {
-                    "ocr_hotkey": config.get("ocr_hotkey", default_keys["ocr_hotkey"]),
-                    "tts_hotkey": config.get("tts_hotkey", default_keys["tts_hotkey"])
-                }
-    except Exception as e:
-        print(f"[CONFIG] Failed to load hotkeys: {e}")
-    return default_keys
 
 def ocr_scan_callback():
     """Start a region scan. Must run on the Qt main thread."""
@@ -60,20 +47,6 @@ def tts_callback():
         # Off the main thread: speak_text can block while stopping earlier speech.
         threading.Thread(target=speak_text, args=(temp_last_text, temp_last_lang), daemon=True).start()
 
-def load_app_settings():
-    defaults = {
-        "auto_copy": True,
-        "auto_tts": False
-    }
-    try:
-        if os.path.exists("config.json"):
-            with open("config.json", "r") as f:
-                data = json.load(f)
-                return {**defaults, **data}
-    except Exception as e:
-        print(f"[CONFIG] Failed to load app settings: {e}")
-    return defaults
-
 def handle_region(img_array):
     """Selector finished: hand the image to the OCR thread."""
     if img_array is None:
@@ -95,12 +68,11 @@ def handle_ocr_result(text, lang):
     temp_last_text = text
     temp_last_lang = lang
 
-    settings = load_app_settings()
-    if settings.get("auto_copy", True):
+    if settings.get("auto_copy"):
         pyperclip.copy(text)
     if overlay:
         overlay.display_text(text)
-    if settings.get("auto_tts", False):
+    if settings.get("auto_tts"):
         threading.Thread(target=speak_text, args=(text, lang), daemon=True).start()
 
     recent_history.insert(0, {"text": text, "lang": lang})
@@ -116,7 +88,7 @@ class TrayApp:
         self.tray_icon = QSystemTrayIcon()
         self.menu = QMenu()
 
-        icon_path = "icon.ico"
+        icon_path = resource_path("icon.ico")
         icon = QIcon(icon_path) if os.path.exists(icon_path) else app.style().standardIcon(QStyle.StandardPixmap.SP_ComputerIcon)
         self.tray_icon.setIcon(icon)
         self.tray_icon.setToolTip("MultiLangOCR is running. Right-click for options.")
@@ -186,6 +158,8 @@ def main():
 
     app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)
+    settings.load()  # once; everything else reads the in-memory copy
+    print(f"[Settings] {settings.settings_path()}")
 
     overlay = FlashOverlay()
     overlay.hide()
@@ -196,7 +170,7 @@ def main():
 
     tray_controller = TrayApp(app)
 
-    keys = load_hotkeys()
+    keys = {"ocr_hotkey": settings.get("ocr_hotkey"), "tts_hotkey": settings.get("tts_hotkey")}
     try:
         hotkey_manager = HotkeyManager(keys["ocr_hotkey"], keys["tts_hotkey"])
     except ValueError as e:

@@ -16,7 +16,7 @@ import numpy as np
 from opencc import OpenCC
 from rapidocr import RapidOCR
 
-from utils import load_app_settings
+import settings
 
 logging.getLogger("RapidOCR").setLevel(logging.WARNING)
 
@@ -229,9 +229,8 @@ def extract_text_with_lang(img_bgr):
     raw = "".join(lines)
     detected_lang = detect_unicode_script(raw)
 
-    settings = load_app_settings()
     if detected_lang == "zh":
-        if (settings.get("prefer_ja_over_zh", False) and is_kanji_only(raw)
+        if (settings.get("prefer_ja_over_zh") and is_kanji_only(raw)
                 and not has_non_japanese_hanzi(raw)):
             detected_lang = "ja"
         elif is_traditional_chinese(raw):

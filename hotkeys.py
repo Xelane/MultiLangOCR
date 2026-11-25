@@ -19,18 +19,14 @@ from dataclasses import dataclass
 from pynput import keyboard
 from PyQt6.QtCore import QObject, QTimer, pyqtSignal
 
+import settings
 from permissions import ensure_hotkey_permissions, hotkey_permissions_granted
 
 IS_MAC = sys.platform == "darwin"
 IS_WIN = sys.platform == "win32"
 
-# Option+Q types a character on a Mac, so the Mac defaults use Ctrl+Option.
-_DEFAULTS_WINDOWS = {"ocr_hotkey": "alt+q", "tts_hotkey": "alt+w"}
-_DEFAULTS_OTHER = {"ocr_hotkey": "ctrl+alt+q", "tts_hotkey": "ctrl+alt+w"}
-
-
 def default_hotkeys():
-    return dict(_DEFAULTS_WINDOWS if IS_WIN else _DEFAULTS_OTHER)
+    return {key: settings.DEFAULTS[key] for key in ("ocr_hotkey", "tts_hotkey")}
 
 
 # --- Parsing -----------------------------------------------------------------
