@@ -9,6 +9,7 @@ the screen grab is in physical pixels (2x on Retina, 1.25x/1.5x on scaled
 Windows displays). The crop rectangle is scaled by image width / screen
 width, so it is right for any scale factor, including fractional ones.
 """
+import os
 import sys
 
 import numpy as np
@@ -19,6 +20,9 @@ from PyQt6.QtWidgets import QWidget
 from permissions import ensure_screen_capture_permission
 
 IS_MAC = sys.platform == "darwin"
+
+DEBUG = bool(os.environ.get("MULTILANGOCR_DEBUG"))
+DEBUG_DIR = "debug_ocr"
 
 MIN_SELECTION = 4  # logical px; smaller drags are treated as a stray click
 DIM_COLOR = QColor(0, 0, 0, 90)
@@ -94,7 +98,28 @@ class _ScreenOverlay(QWidget):
         ).intersected(self._image.rect())
         if src.isEmpty():
             return None
-        return self._image.copy(src)
+        cropped = self._image.copy(src)
+        if DEBUG:
+            self._dump_debug(rect, src, cropped, scale_x, scale_y)
+        return cropped
+
+    def _dump_debug(self, rect, src, cropped, scale_x, scale_y):
+        """MULTILANGOCR_DEBUG=1: save what was captured to debug_ocr/."""
+        os.makedirs(DEBUG_DIR, exist_ok=True)
+        shot = self._image.copy()
+        shot.setDevicePixelRatio(1)  # so the painter below works in raw pixels
+        painter = QPainter(shot)
+        painter.setPen(QPen(QColor(255, 0, 0), 4))
+        painter.drawRect(src)
+        painter.end()
+        shot.save(f"{DEBUG_DIR}/screen_with_selection.png")
+        cropped.save(f"{DEBUG_DIR}/selection.png")
+        print(
+            f"[Selector] widget rect={rect.getRect()} window={self.geometry().getRect()} "
+            f"screen={self._screen.geometry().getRect()} offset=({self._offset().x()},{self._offset().y()}) "
+            f"image={self._image.width()}x{self._image.height()} scale=({scale_x:.2f},{scale_y:.2f}) "
+            f"crop={src.getRect()}"
+        )
 
     def paintEvent(self, event):
         painter = QPainter(self)
