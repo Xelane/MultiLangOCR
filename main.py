@@ -9,7 +9,7 @@ from PyQt6.QtCore import QTimer, pyqtSignal, QObject
 from PyQt6.QtGui import QIcon, QAction
 
 from selector import RegionSelector
-from ocr import extract_text_with_lang
+from ocr import extract_text_with_lang, warm_up
 from tts import speak_text
 from ui import FlashOverlay
 from hotkeys import setup_hotkeys
@@ -150,9 +150,18 @@ def refresh_tray_area():
     if hwnd:
         ctypes.windll.user32.InvalidateRect(hwnd, None, True)
 
+def _warm_up_ocr():
+    try:
+        warm_up()
+    except Exception as e:
+        print(f"[OCR] Warm-up failed: {e}")
+
 def main():
     global overlay, tray, selector, main_invoker
     print("Starting MultiLangOCR...")
+
+    # Load OCR models in the background so the first scan isn't slow.
+    threading.Thread(target=_warm_up_ocr, daemon=True).start()
 
     app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)

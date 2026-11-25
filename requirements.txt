@@ -3,7 +3,7 @@ pyperclip
 pyttsx3
 keyboard
 Pillow
-opencv-python
 numpy
 opencc-python-reimplemented
-paddleocr>=3.0.0
+rapidocr>=3.10
+onnxruntime
