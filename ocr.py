@@ -134,12 +134,15 @@ def group_into_lines(pieces):
     pieces: [(text, box)] in detector order, box being 4 (x, y) corners or None.
     The detector sometimes splits one line into several boxes ("Hello" and
     "world"); those must become "Hello world", not two lines. Returns one string
-    per visual line. Tall, narrow boxes (vertical text) are never merged.
+    per visual line. Tall, narrow boxes (vertical text) are never merged;
+    runs of them are ordered right to left, the way vertical Japanese and
+    Chinese is read.
     """
-    lines = []  # each: {"top", "bottom", "items": [(left, text)]}; top is None if unmergeable
+    # each: {"top", "bottom", "items": [(left, text)], "vertical", "x"}; top is None if unmergeable
+    lines = []
     for text, box in pieces:
         if box is None:
-            lines.append({"top": None, "bottom": None, "items": [(0.0, text)]})
+            lines.append({"top": None, "bottom": None, "items": [(0.0, text)], "vertical": False, "x": 0.0})
             continue
         xs, ys = box[:, 0], box[:, 1]
         left, top, bottom = float(xs.min()), float(ys.min()), float(ys.max())
@@ -156,9 +159,21 @@ def group_into_lines(pieces):
                     best, best_ratio = line, ratio
         if best is None:
             lines.append({"top": top if horizontal else None, "bottom": bottom if horizontal else None,
-                          "items": [(left, text)]})
+                          "items": [(left, text)], "vertical": not horizontal, "x": float(xs.mean())})
         else:
             best["items"].append((left, text))
+
+    # The detector lists boxes left to right; vertical columns read right to left.
+    ordered, run = [], []
+    for line in lines + [None]:
+        if line is not None and line["vertical"]:
+            run.append(line)
+            continue
+        ordered.extend(sorted(run, key=lambda column: -column["x"]))
+        run = []
+        if line is not None:
+            ordered.append(line)
+    lines = ordered
 
     result = []
     for line in lines:
