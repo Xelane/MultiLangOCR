@@ -7,7 +7,7 @@ from PyQt6.QtGui import QIcon
 import os
 import settings
 from resources import resource_path
-from tts import speak_text
+import tts
 
 # Light enough to read on a dark window, still fine on a light one.
 STATUS_OK = "#5FDB74"
@@ -134,7 +134,7 @@ class ConfigUI(QWidget):
 
     def handle_item_click(self, item):
         entry = item.data(Qt.ItemDataRole.UserRole)
-        speak_text(entry["text"], entry["lang"])
+        tts.speak_text(entry["text"], entry["lang"])
         if self.auto_copy_checkbox.isChecked():
             QApplication.clipboard().setText(entry["text"])
             self.show_status("Copied to clipboard.")

@@ -11,7 +11,7 @@ from resources import resource_path
 from selector import RegionSelector
 from ocr import warm_up
 from ocr_worker import OcrRunner
-from tts import speak_text
+import tts
 from ui import FlashOverlay
 from hotkeys import HotkeyManager, default_hotkeys
 from configui import launch_config_ui
@@ -42,8 +42,7 @@ def ocr_scan_callback():
 
 def tts_callback():
     if temp_last_text:
-        # Off the main thread: speak_text can block while stopping earlier speech.
-        threading.Thread(target=speak_text, args=(temp_last_text, temp_last_lang), daemon=True).start()
+        tts.speak_text(temp_last_text, temp_last_lang)  # returns at once; interrupts earlier speech
 
 def handle_region(img_array):
     """Selector finished: hand the image to the OCR thread."""
@@ -71,7 +70,7 @@ def handle_ocr_result(text, lang):
     if overlay:
         overlay.display_text(text)
     if settings.get("auto_tts"):
-        threading.Thread(target=speak_text, args=(text, lang), daemon=True).start()
+        tts.speak_text(text, lang)
 
     recent_history.insert(0, {"text": text, "lang": lang})
     if config_window and config_window.isVisible():
@@ -144,6 +143,10 @@ def _warm_up_ocr():
         warm_up()
     except Exception as e:
         print(f"[OCR] Warm-up failed: {e}")
+    try:
+        tts.warm_up()
+    except Exception as e:
+        print(f"[TTS] Warm-up failed: {e}")
 
 def _log_uncaught(exc_type, exc, tb):
     # PyQt6 aborts the whole process on an uncaught exception in a slot unless
@@ -169,6 +172,7 @@ def main():
     ocr_runner = OcrRunner()
     ocr_runner.finished.connect(handle_ocr_result)
     app.aboutToQuit.connect(ocr_runner.shutdown)
+    app.aboutToQuit.connect(tts.stop_speaking)  # don't keep talking after quit
 
     tray_controller = TrayApp(app)
 

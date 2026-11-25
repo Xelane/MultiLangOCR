@@ -1,5 +1,5 @@
 PyQt6
-pyttsx3
+pyttsx3; sys_platform == "win32"
 pynput
 numpy
 opencc-python-reimplemented
